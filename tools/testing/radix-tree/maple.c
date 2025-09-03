@@ -36662,6 +36662,7 @@ static void regression_tests(void)
 
 void maple_tree_tests(void)
 {
+	printf("Run benchmarks comparing this to MlpIndex\n");
 #if !defined(BENCH)
 	regression_tests();
 	farmer_tests();
