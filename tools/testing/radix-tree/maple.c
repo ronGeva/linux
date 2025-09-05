@@ -36684,10 +36684,42 @@ void test_mtree_inserts_sanity(void)
 	printf("Maple tree demo took %.3f ms\n", duration_ms);
 }
 
+void my_test(void)
+{
+	struct maple_tree tree;
+	int ret;
+
+	mt_init(&tree);
+
+	int entries[] = {1, 2, 3, 4};
+	ret = mtree_insert_range(&tree, 10, 100, &entries[0], GFP_KERNEL);
+	printf("ret=%d\n", ret);
+	mtree_insert_range(&tree, 200, 300, &entries[1], GFP_KERNEL);
+	printf("ret=%d\n", ret);
+	mtree_insert_range(&tree, 3, 5, &entries[2], GFP_KERNEL);
+	printf("ret=%d\n", ret);
+	mtree_insert_range(&tree, 1000, 10000, &entries[3], GFP_KERNEL);
+	printf("ret=%d\n", ret);
+
+	unsigned long index = 7;
+	void* entry = mt_find(&tree, &index, 1000);
+
+	if (entry == NULL)
+	{
+		printf("entry=NULL\n");
+	}
+	else
+	{
+		printf("entry=%d\n", *(int*)entry);
+	}
+	printf("index=%d\n", index);
+}
+
 void maple_tree_tests(void)
 {
 	printf("Run benchmarks comparing this to MlpIndex\n");
 	test_mtree_inserts_sanity();
+	//my_test();
 	return;
 #if !defined(BENCH)
 	regression_tests();
