@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <linux/init.h>
+#include <benchmarking/benchmark_mlp.h>
 
 #define module_init(x)
 #define module_exit(x)
@@ -36660,9 +36661,34 @@ static void regression_tests(void)
 	test_spanning_store_regression();
 }
 
+void test_mtree_inserts_sanity(void)
+{
+	struct maple_tree tree;
+	struct timespec start, end;
+
+	mt_init(&tree);
+
+	// benchmark
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	for (int i = 0; i < 100000; i++)
+	{
+		if (mtree_insert(&tree, i, NULL, GFP_KERNEL))
+		{
+			printf("ERROR!");
+			return;
+		}
+	}
+	clock_gettime(CLOCK_MONOTONIC, &end);
+
+	double duration_ms = bm_duration_passed_ms(&start, &end);
+	printf("Maple tree demo took %.3f ms\n", duration_ms);
+}
+
 void maple_tree_tests(void)
 {
 	printf("Run benchmarks comparing this to MlpIndex\n");
+	test_mtree_inserts_sanity();
+	return;
 #if !defined(BENCH)
 	regression_tests();
 	farmer_tests();

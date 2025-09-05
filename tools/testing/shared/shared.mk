@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0
 
-CFLAGS += -I../shared -I. -I../../include -I../../../lib -g -Og -Wall \
+CFLAGS += -I../shared -I. -I../../include -I../../../lib  -I../../../../.. -g -Og -Wall \
 	  -D_LGPL_SOURCE -fsanitize=address -fsanitize=undefined
 LDFLAGS += -fsanitize=address -fsanitize=undefined
 LDLIBS += -lpthread -lurcu
-LIBS := slab.o find_bit.o bitmap.o hweight.o vsprintf.o
+LIBS := slab.o find_bit.o bitmap.o hweight.o vsprintf.o benchmark_mlp.o
 SHARED_OFILES = xarray-shared.o radix-tree.o idr.o linux.o $(LIBS)
 
 SHARED_DEPS = Makefile ../shared/shared.mk ../shared/*.h generated/map-shift.h \

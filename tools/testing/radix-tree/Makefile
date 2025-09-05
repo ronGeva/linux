@@ -20,7 +20,7 @@ idr-test: idr-test.o $(CORE_OFILES)
 
 xarray: $(CORE_OFILES) xarray.o
 
-maple: $(CORE_OFILES) maple.o
+maple: $(CORE_OFILES) maple.o benchmark_mlp.o
 
 multiorder: multiorder.o $(CORE_OFILES)
 
@@ -28,3 +28,5 @@ clean:
 	$(RM) $(TARGETS) *.o radix-tree.c idr.c generated/*
 
 $(OFILES): $(SHARED_DEPS) *.h
+
+benchmark_mlp.o: ../../../../../benchmarking/benchmark_mlp.c
