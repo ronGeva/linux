@@ -36684,6 +36684,65 @@ void test_mtree_inserts_sanity(void)
 	printf("Maple tree demo took %.3f ms\n", duration_ms);
 }
 
+int mt_bm_insert(void* tree, unsigned long long key, void* entry)
+{
+	return mtree_insert(tree, (unsigned long)key, entry, GFP_KERNEL);
+}
+
+int mt_bm_insert_range(void* tree, unsigned long first,
+					   unsigned long last, void *entry)
+{
+	return mtree_insert_range(tree, first, last, entry, GFP_KERNEL);
+}
+
+void* mt_bm_find(void* tree, unsigned long long* index, unsigned long long max)
+{
+	unsigned long temp_index = *index;
+
+	void* entry = mt_find(tree, &temp_index, (unsigned long)max);
+
+	*index = temp_index;
+
+	return entry;
+}
+
+void* mt_bm_load(void* tree, unsigned long long index)
+{
+	return mtree_load(tree, (unsigned long)index);
+}
+
+// Erases the range that contains index
+void* mt_bm_erase(void* tree, unsigned long long index)
+{
+	return mtree_erase(tree, (unsigned long)index);
+}
+
+void mt_bm_init_tree(BenchmarkTree* bm_tree, struct maple_tree* tree)
+{
+	mt_init(tree);
+
+	bm_tree->tree = tree;
+	bm_tree->Insert = &mt_bm_insert;
+	bm_tree->InsertRange = &mt_bm_insert_range;
+	bm_tree->Find = &mt_bm_find;
+	bm_tree->Load = &mt_bm_load;
+	bm_tree->Erase = &mt_bm_erase;
+}
+
+void test_mtree_run_benchmark(void)
+{
+	BenchmarkTree bm_tree;
+	struct maple_tree tree;
+
+	mt_bm_init_tree(&bm_tree, &tree);
+	bm_run_workloadA(&bm_tree);
+	mtree_destroy(&tree);
+
+	mt_bm_init_tree(&bm_tree, &tree);
+	bm_run_workloadB(&bm_tree);
+	mtree_destroy(&tree);
+}
+
 void my_test(void)
 {
 	struct maple_tree tree;
@@ -36718,7 +36777,8 @@ void my_test(void)
 void maple_tree_tests(void)
 {
 	printf("Run benchmarks comparing this to MlpIndex\n");
-	test_mtree_inserts_sanity();
+	test_mtree_run_benchmark();
+	//test_mtree_inserts_sanity();
 	//my_test();
 	return;
 #if !defined(BENCH)
