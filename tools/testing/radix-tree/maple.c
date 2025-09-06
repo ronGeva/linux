@@ -36741,6 +36741,10 @@ void test_mtree_run_benchmark(void)
 	mt_bm_init_tree(&bm_tree, &tree);
 	bm_run_workloadB(&bm_tree);
 	mtree_destroy(&tree);
+
+	mt_bm_init_tree(&bm_tree, &tree);
+	bm_run_workloadC(&bm_tree);
+	mtree_destroy(&tree);
 }
 
 void my_test(void)
