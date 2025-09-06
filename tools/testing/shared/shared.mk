@@ -37,6 +37,7 @@ endif
 	$(CC) -c $(CFLAGS) $< -o $@
 
 vpath %.c ../../lib
+vpath %.c ../../../../../benchmarking
 
 $(SHARED_OFILES): $(SHARED_DEPS)
 
