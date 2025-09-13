@@ -36734,21 +36734,21 @@ void test_mtree_run_benchmark(void)
 	BenchmarkTree bm_tree;
 	struct maple_tree tree;
 
-	mt_bm_init_tree(&bm_tree, &tree);
-	bm_run_workloadA(&bm_tree);
-	mtree_destroy(&tree);
+	// mt_bm_init_tree(&bm_tree, &tree);
+	// bm_run_workloadA(&bm_tree);
+	// mtree_destroy(&tree);
 
-	mt_bm_init_tree(&bm_tree, &tree);
-	bm_run_workloadB(&bm_tree);
-	mtree_destroy(&tree);
+	// mt_bm_init_tree(&bm_tree, &tree);
+	// bm_run_workloadB(&bm_tree);
+	// mtree_destroy(&tree);
 
-	mt_bm_init_tree(&bm_tree, &tree);
-	bm_run_workloadC(&bm_tree);
-	mtree_destroy(&tree);
+	// mt_bm_init_tree(&bm_tree, &tree);
+	// bm_run_workloadC(&bm_tree);
+	// mtree_destroy(&tree);
 
-	mt_bm_init_tree(&bm_tree, &tree);
-	bm_run_workloadD(&bm_tree);
-	mtree_destroy(&tree);
+	// mt_bm_init_tree(&bm_tree, &tree);
+	// bm_run_workloadD(&bm_tree);
+	// mtree_destroy(&tree);
 
 	mt_bm_init_tree(&bm_tree, &tree);
 	bm_run_workloadE(&bm_tree);
