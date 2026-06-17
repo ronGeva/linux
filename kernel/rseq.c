@@ -508,6 +508,8 @@ struct slice_timer {
 };
 
 unsigned int rseq_slice_ext_nsecs __read_mostly = 30 * NSEC_PER_USEC;
+/* When false, syscalls do not revoke a granted slice extension. */
+bool rseq_slice_revoke_on_syscall __read_mostly = true;
 static DEFINE_PER_CPU(struct slice_timer, slice_timer);
 DEFINE_STATIC_KEY_TRUE(rseq_slice_extension_key);
 
@@ -629,6 +631,18 @@ void rseq_syscall_enter_work(long syscall)
 		return;
 
 	/*
+	 * When revocation on syscall is disabled via the
+	 * kernel.rseq_slice_extension_revoke_on_syscall sysctl, an involuntary
+	 * syscall does not revoke the grant: the timer (armed at grant time)
+	 * stays active and still forces a reschedule when it fires. An explicit
+	 * sched_yield(2) is user space requesting to drop the slice, so it is
+	 * always honoured. Timer-expiry and context-switch revocations happen
+	 * on the exit-to-user path and are unaffected by this knob.
+	 */
+	if (!rseq_slice_revoke_on_syscall && syscall != __NR_sched_yield)
+		return;
+
+	/*
 	 * Required to stabilize the per CPU timer pointer and to make
 	 * set_tsk_need_resched() correct on PREEMPT[RT] kernels.
 	 */
@@ -717,7 +731,8 @@ die:
 
 #ifdef CONFIG_SYSCTL
 static const unsigned int rseq_slice_ext_nsecs_min = 10 * NSEC_PER_USEC;
-static const unsigned int rseq_slice_ext_nsecs_max = 4294967295; // the maximum size I could put without overflow
+static const unsigned int rseq_slice_ext_nsecs_max =
+	IS_ENABLED(CONFIG_RSEQ_SLICE_EXTENSION_TESTING) ? 2 * NSEC_PER_SEC : 50 * NSEC_PER_USEC;
 
 static const struct ctl_table rseq_slice_ext_sysctl[] = {
 	{
@@ -728,6 +743,13 @@ static const struct ctl_table rseq_slice_ext_sysctl[] = {
 		.proc_handler	= proc_douintvec_minmax,
 		.extra1		= (unsigned int *)&rseq_slice_ext_nsecs_min,
 		.extra2		= (unsigned int *)&rseq_slice_ext_nsecs_max,
+	},
+	{
+		.procname	= "rseq_slice_extension_revoke_on_syscall",
+		.data		= &rseq_slice_revoke_on_syscall,
+		.maxlen		= sizeof(bool),
+		.mode		= 0644,
+		.proc_handler	= proc_dobool,
 	},
 };
 

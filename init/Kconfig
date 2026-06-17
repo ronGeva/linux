@@ -1925,6 +1925,23 @@ config RSEQ_SLICE_EXTENSION
 
 	  If unsure, say N.
 
+config RSEQ_SLICE_EXTENSION_TESTING
+	bool "Enable testing mode for rseq time slice extension"
+	depends on RSEQ_SLICE_EXTENSION
+	help
+	  Enables a testing mode for the rseq time slice extension mechanism
+	  that raises the sysctl-configurable maximum slice extension duration
+	  from 50 microseconds to 2 seconds, allowing effectively unlimited
+	  time slice extensions for observing application behaviour.
+
+	  Note: grant revocation on syscall is now controlled at runtime via
+	  the kernel.rseq_slice_extension_revoke_on_syscall sysctl (default on)
+	  rather than by this build-time option.
+
+	  This is strictly a testing aid.  Do NOT enable in production kernels.
+
+	  If unsure, say N.
+
 config RSEQ_STATS
 	default n
 	bool "Enable lightweight statistics of restartable sequences" if EXPERT

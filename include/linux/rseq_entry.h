@@ -90,6 +90,7 @@ static __always_inline bool rseq_slice_extension_enabled(void)
 }
 
 extern unsigned int rseq_slice_ext_nsecs;
+extern bool rseq_slice_revoke_on_syscall;
 bool __rseq_arm_slice_extension_timer(void);
 
 static __always_inline bool rseq_arm_slice_extension_timer(void)
@@ -120,11 +121,44 @@ static __always_inline bool rseq_grant_slice_extension(bool work_pending)
 	if (!rseq_slice_extension_enabled())
 		return false;
 
-	/* If not enabled or not a return from interrupt, nothing to do. */
+	/*
+	 * A grant is normally only conferred on return from a hardware
+	 * interrupt (user_irq). When revocation on syscall is disabled, also
+	 * honour a pending request on a syscall-induced reschedule (e.g. a lock
+	 * holder's own futex_wake), so request==1 can be granted even when no
+	 * grant was conferred yet. The slice timer remains the latency bound.
+	 */
 	state = curr->rseq.slice.state;
-	state.enabled &= curr->rseq.event.user_irq;
+	state.enabled &= (curr->rseq.event.user_irq | !rseq_slice_revoke_on_syscall);
 	if (likely(!state.state))
 		return false;
+
+	/*
+	 * A grant is already live. When revocation on syscall is disabled, the
+	 * grant is dropped only by an explicit sched_yield(2) (handled in
+	 * rseq_syscall_enter_work()) or by its own slice timer expiring. Carry
+	 * it across every other reschedule request - whether it arrived via a
+	 * syscall return or a hardware interrupt (tick, wakeup IPI, device IRQ)
+	 * - until the timer expires: clear the reschedule request and let the
+	 * task finish its critical section. The slice timer armed at grant time
+	 * stays the latency bound.
+	 *
+	 * Once curr->rseq.slice.expires has passed, fall through to the revoke
+	 * body below. This is essential: the timer fires at expires and sets
+	 * NEED_RESCHED, so by the time we get here on an expired grant now is
+	 * past expires and the branch is skipped, forcing the reschedule.
+	 * Without the expiry check an expired grant would be carried forever
+	 * while __rseq_arm_slice_extension_timer() keeps re-raising NEED_RESCHED
+	 * for the already-expired slice, livelocking exit_to_user_mode_loop().
+	 */
+	if (state.granted && !work_pending && !rseq_slice_revoke_on_syscall &&
+	    curr->rseq.slice.expires >= ktime_get_mono_fast_ns()) {
+		scoped_guard(irq) {
+			clear_tsk_need_resched(curr);
+			clear_preempt_need_resched();
+		}
+		return true;
+	}
 
 	rseq = curr->rseq.usrptr;
 	scoped_user_rw_access(rseq, efault) {
