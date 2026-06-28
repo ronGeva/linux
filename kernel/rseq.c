@@ -605,7 +605,11 @@ static void rseq_slice_validate_ctrl(u32 expected)
 	u32 __user *sctrl = &current->rseq.usrptr->slice_ctrl.all;
 	u32 uval;
 
-	if (get_user(uval, sctrl) || uval != expected)
+	/*
+	 * The upper half of slice_ctrl (in_cs/__reserved) is owned by user space
+	 * and not tracked by @expected, so only validate request/granted.
+	 */
+	if (get_user(uval, sctrl) || (uval & 0xffffu) != expected)
 		force_sig(SIGSEGV);
 }
 
@@ -633,14 +637,22 @@ void rseq_syscall_enter_work(long syscall)
 	/*
 	 * When revocation on syscall is disabled via the
 	 * kernel.rseq_slice_extension_revoke_on_syscall sysctl, an involuntary
-	 * syscall does not revoke the grant: the timer (armed at grant time)
-	 * stays active and still forces a reschedule when it fires. An explicit
-	 * sched_yield(2) is user space requesting to drop the slice, so it is
-	 * always honoured. Timer-expiry and context-switch revocations happen
-	 * on the exit-to-user path and are unaffected by this knob.
+	 * syscall does not revoke the grant *while the thread is inside its
+	 * critical section* (user space set rseq->slice_ctrl.in_cs). The timer
+	 * (armed at grant time) stays active and still forces a reschedule when
+	 * it fires. A thread that has not entered its critical section yet (e.g.
+	 * still spinning to acquire the lock) has in_cs == 0 and is revoked
+	 * normally. An explicit sched_yield(2) is user space requesting to drop
+	 * the slice, so it is always honoured. Timer-expiry and context-switch
+	 * revocations happen on the exit-to-user path and are unaffected by this
+	 * knob.
 	 */
-	if (!rseq_slice_revoke_on_syscall && syscall != __NR_sched_yield)
-		return;
+	if (!rseq_slice_revoke_on_syscall && syscall != __NR_sched_yield) {
+		u8 in_cs;
+
+		if (!get_user(in_cs, &curr->rseq.usrptr->slice_ctrl.in_cs) && in_cs)
+			return;
+	}
 
 	/*
 	 * Required to stabilize the per CPU timer pointer and to make
@@ -658,7 +670,8 @@ void rseq_syscall_enter_work(long syscall)
 
 	/* Clear the grant in kernel state and user space */
 	curr->rseq.slice.state.granted = false;
-	if (put_user(0U, &curr->rseq.usrptr->slice_ctrl.all))
+	/* Clear request+granted only; in_cs/__reserved are user owned. */
+	if (put_user((u16)0, (u16 __user *)&curr->rseq.usrptr->slice_ctrl.all))
 		force_sig(SIGSEGV);
 
 	/*

@@ -135,29 +135,39 @@ static __always_inline bool rseq_grant_slice_extension(bool work_pending)
 
 	/*
 	 * A grant is already live. When revocation on syscall is disabled, the
-	 * grant is dropped only by an explicit sched_yield(2) (handled in
-	 * rseq_syscall_enter_work()) or by its own slice timer expiring. Carry
-	 * it across every other reschedule request - whether it arrived via a
-	 * syscall return or a hardware interrupt (tick, wakeup IPI, device IRQ)
-	 * - until the timer expires: clear the reschedule request and let the
-	 * task finish its critical section. The slice timer armed at grant time
-	 * stays the latency bound.
+	 * grant is kept non-revokably only while user space is inside its
+	 * critical section (rseq->slice_ctrl.in_cs) and the slice has not
+	 * expired. In that case carry it across this reschedule request -
+	 * whether it arrived via a syscall return or a hardware interrupt (tick,
+	 * wakeup IPI, device IRQ): clear the reschedule request and let the task
+	 * finish its critical section. The slice timer armed at grant time stays
+	 * the latency bound, and an explicit sched_yield(2) still drops it via
+	 * rseq_syscall_enter_work().
 	 *
-	 * Once curr->rseq.slice.expires has passed, fall through to the revoke
-	 * body below. This is essential: the timer fires at expires and sets
-	 * NEED_RESCHED, so by the time we get here on an expired grant now is
-	 * past expires and the branch is skipped, forcing the reschedule.
-	 * Without the expiry check an expired grant would be carried forever
-	 * while __rseq_arm_slice_extension_timer() keeps re-raising NEED_RESCHED
-	 * for the already-expired slice, livelocking exit_to_user_mode_loop().
+	 * Everything else falls through to the revoke body below and reschedules
+	 * now:
+	 *  - in_cs == 0: a thread that requested an extension but is not (or no
+	 *    longer) in its critical section, e.g. a lock waiter still spinning
+	 *    to acquire. Revoking on this, the first reschedule, stops it from
+	 *    holding the CPU away from the task that must advance next.
+	 *  - expired: the timer fired at expires and set NEED_RESCHED, so now is
+	 *    past expires and we must reschedule. (Without this an expired grant
+	 *    would be carried forever while __rseq_arm_slice_extension_timer()
+	 *    keeps re-raising NEED_RESCHED, livelocking exit_to_user_mode_loop().)
+	 *  - a faulting in_cs read is treated as in_cs == 0 (revoke), the safe
+	 *    default.
 	 */
 	if (state.granted && !work_pending && !rseq_slice_revoke_on_syscall &&
 	    curr->rseq.slice.expires >= ktime_get_mono_fast_ns()) {
-		scoped_guard(irq) {
-			clear_tsk_need_resched(curr);
-			clear_preempt_need_resched();
+		u8 in_cs = 0;
+
+		if (!get_user(in_cs, &curr->rseq.usrptr->slice_ctrl.in_cs) && in_cs) {
+			scoped_guard(irq) {
+				clear_tsk_need_resched(curr);
+				clear_preempt_need_resched();
+			}
+			return true;
 		}
-		return true;
 	}
 
 	rseq = curr->rseq.usrptr;
@@ -174,8 +184,8 @@ static __always_inline bool rseq_grant_slice_extension(bool work_pending)
 		 *     extension grant.
 		 */
 		if (unlikely(work_pending || state.granted)) {
-			/* Clear user control unconditionally. No point for checking */
-			unsafe_put_user(0U, &rseq->slice_ctrl.all, efault);
+			/* Revoke: clear request+granted, keep user-owned in_cs/__reserved. */
+			unsafe_put_user((u16)0, (u16 __user *)&rseq->slice_ctrl.all, efault);
 			rseq_slice_clear_grant(curr);
 			return false;
 		}
@@ -543,8 +553,8 @@ bool rseq_set_ids_get_csaddr(struct task_struct *t, struct rseq_ids *ids,
 
 		/* Open coded, so it's in the same user access region */
 		if (rseq_slice_extension_enabled()) {
-			/* Unconditionally clear it, no point in conditionals */
-			unsafe_put_user(0U, &rseq->slice_ctrl.all, efault);
+			/* Clear request+granted only; in_cs/__reserved are user owned. */
+			unsafe_put_user((u16)0, (u16 __user *)&rseq->slice_ctrl.all, efault);
 		}
 	}
 
@@ -649,8 +659,8 @@ static __always_inline bool rseq_exit_user_update(struct pt_regs *regs, struct t
 
 			/* Open coded, so it's in the same user access region */
 			if (rseq_slice_extension_enabled()) {
-				/* Unconditionally clear it, no point in conditionals */
-				unsafe_put_user(0U, &rseq->slice_ctrl.all, efault);
+				/* Clear request+granted only; in_cs/__reserved are user owned. */
+				unsafe_put_user((u16)0, (u16 __user *)&rseq->slice_ctrl.all, efault);
 			}
 		}
 

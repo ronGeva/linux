@@ -69,10 +69,13 @@ struct rseq_cs {
  * @all:	Compound value
  * @request:	Request for a time slice extension
  * @granted:	Granted time slice extension
+ * @in_cs:	User space is inside its critical section
  *
  * @request is set by user space and can be cleared by user space or kernel
  * space.  @granted is set and cleared by the kernel and must only be read
- * by user space.
+ * by user space.  @in_cs is set and cleared by user space to tell the kernel
+ * that the thread currently holds a lock / is inside its critical section; the
+ * kernel only reads it.
  */
 struct rseq_slice_ctrl {
 	union {
@@ -80,7 +83,8 @@ struct rseq_slice_ctrl {
 		struct {
 			__u8	request;
 			__u8	granted;
-			__u16	__reserved;
+			__u8	in_cs;
+			__u8	__reserved;
 		};
 	};
 };
