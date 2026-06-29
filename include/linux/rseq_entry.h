@@ -91,6 +91,7 @@ static __always_inline bool rseq_slice_extension_enabled(void)
 
 extern unsigned int rseq_slice_ext_nsecs;
 extern bool rseq_slice_revoke_on_syscall;
+extern bool rseq_slice_depend_on_in_cs;
 bool __rseq_arm_slice_extension_timer(void);
 
 static __always_inline bool rseq_arm_slice_extension_timer(void)
@@ -161,7 +162,13 @@ static __always_inline bool rseq_grant_slice_extension(bool work_pending)
 	    curr->rseq.slice.expires >= ktime_get_mono_fast_ns()) {
 		u8 in_cs = 0;
 
-		if (!get_user(in_cs, &curr->rseq.usrptr->slice_ctrl.in_cs) && in_cs) {
+		/*
+		 * When the in_cs dependency is disabled, carry the grant
+		 * unconditionally (without reading in_cs). Otherwise carry it
+		 * only while user space is inside its critical section.
+		 */
+		if (!rseq_slice_depend_on_in_cs ||
+		    (!get_user(in_cs, &curr->rseq.usrptr->slice_ctrl.in_cs) && in_cs)) {
 			scoped_guard(irq) {
 				clear_tsk_need_resched(curr);
 				clear_preempt_need_resched();

@@ -510,6 +510,13 @@ struct slice_timer {
 unsigned int rseq_slice_ext_nsecs __read_mostly = 30 * NSEC_PER_USEC;
 /* When false, syscalls do not revoke a granted slice extension. */
 bool rseq_slice_revoke_on_syscall __read_mostly = true;
+/*
+ * When false, the in_cs checks are skipped entirely: a non-revoking syscall
+ * (and a carried grant) keep the slice regardless of whether user space is
+ * inside its critical section, and without reading rseq->slice_ctrl.in_cs.
+ * When true, honour in_cs as usual.
+ */
+bool rseq_slice_depend_on_in_cs __read_mostly = true;
 static DEFINE_PER_CPU(struct slice_timer, slice_timer);
 DEFINE_STATIC_KEY_TRUE(rseq_slice_extension_key);
 
@@ -650,7 +657,13 @@ void rseq_syscall_enter_work(long syscall)
 	if (!rseq_slice_revoke_on_syscall && syscall != __NR_sched_yield) {
 		u8 in_cs;
 
-		if (!get_user(in_cs, &curr->rseq.usrptr->slice_ctrl.in_cs) && in_cs)
+		/*
+		 * When the in_cs dependency is disabled, never revoke here: keep
+		 * the grant regardless of the in_cs value (and without reading
+		 * it). Otherwise honour in_cs as usual.
+		 */
+		if (!rseq_slice_depend_on_in_cs ||
+		    (!get_user(in_cs, &curr->rseq.usrptr->slice_ctrl.in_cs) && in_cs))
 			return;
 	}
 
@@ -760,6 +773,13 @@ static const struct ctl_table rseq_slice_ext_sysctl[] = {
 	{
 		.procname	= "rseq_slice_extension_revoke_on_syscall",
 		.data		= &rseq_slice_revoke_on_syscall,
+		.maxlen		= sizeof(bool),
+		.mode		= 0644,
+		.proc_handler	= proc_dobool,
+	},
+	{
+		.procname	= "rseq_slice_depend_on_in_cs",
+		.data		= &rseq_slice_depend_on_in_cs,
 		.maxlen		= sizeof(bool),
 		.mode		= 0644,
 		.proc_handler	= proc_dobool,
